@@ -1,15 +1,12 @@
 import serial
 import threading
-from timeit import default_timer as timer
+import os
+import subprocess
+import json
+import qrcode
 
 SERIAL_PORT="/dev/ttyACM0"
-global beginTimer
-
-global paymentTotalSecs
-SatoshiAmtPerSec = 2840
-beginTimer = False
-global elapsed_time
-global startTime
+mSatsPerMS = 2840
 
 def start_serial():
     try:
@@ -31,38 +28,7 @@ def msg_decode(msg):
     msg = msg.decode('utf-8')
     return msg
 
-def msg_parse(msg):
-    msg = msg_decode(msg)
-    return msg
-
-def timerCheck():
-    global beginTimer
-
-    if (beginTimer):
-        endTime = timer()
-        elapsed_time = endTime - firstTime
-        print(elapsed_time)
-
-## Gets the serial data
-def read_keg_data(sp):
-    global beginTimer
-
-    while(True):
-        raw_data = sp.readline()
-        msg = msg_parse(raw_data)
-
-        # Arduino sends numbers when the button is pushed
-        # btn:idle when not pushed
-        if msg == "-1":
-            firstTime = timer()
-            beginTimer = True
-        else:
-            global paymentTotalSecs
-
-            paymentTotalSecs = paymentTotalSecs + int(msg)
-            beginTimer = False
-
-        # print(msg)
+   
 
 def main():
     if __name__ == '__main__':
@@ -72,13 +38,16 @@ def main():
             print("Exiting!")
 
         print("We opened {}".format(sp.name))
-
-        print("Starting a new thread for the serial...")
-        serial_thread = threading.Thread(target=read_keg_data, args=(sp, ))
-        serial_thread.start()
-
-        print("Starting a new thread for the timer...")
-        timer_thread = threading.Thread(target=timerCheck, args=())
-        timer_thread.start()
-
+        while(True):
+            millis = int(msg_decode(sp.readline()))
+            tab = mSatsPerMS * millis
+            inv = subprocess.Popen(['sudo', 'sh','bitcoin-lightning-cli.sh', 'invoice', str(tab), '{}ms of beer pouring'.format(millis), 'rate 2840 sat/sec'],stdout=subprocess.PIPE,stderr=subprocess.STDOUT)
+            stdout,stderr = inv.communicate()
+            invDict = json.loads(stdout)
+            print("invoice for {} milliseconds of beer pouring at the rate of {} millisatoshis per second".format(millis,mSatsPerMS))
+            print(invDict)
+            qr = qrcode.QRCode()
+            qr.add_data(invDict['bolt11'])
+            qr.print_ascii()
+        
 main()
